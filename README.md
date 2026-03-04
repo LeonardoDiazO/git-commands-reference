@@ -144,4 +144,130 @@ for name in $(git diff HEAD "@{<N>.hours.ago}" --name-only); do
   rsync -R "$name" "<destino>"
 done
 ```
-**¿Qué hace?** En lugar de contar por commits, f
+**¿Qué hace?** En lugar de contar por commits, filtra por tiempo. `@{N.hours.ago}` es una sintaxis especial de Git para referirse al estado del repositorio hace exactamente `N` horas. Útil cuando trabajas por bloques de tiempo y quieres copiar solo lo del turno actual.
+
+---
+
+### Copiar archivos agregados o modificados desde medianoche
+```bash
+for name in $(git log --since="midnight" --pretty=format: --name-only --diff-filter=AM <rama-base>); do
+  rsync -R "$name" "<destino>"
+done
+```
+**¿Qué hace?** Usa `git log` en lugar de `git diff` para filtrar por fecha desde las 00:00 hrs del día actual. El flag `--diff-filter=AM` restringe los resultados solo a archivos **A**gregados y **M**odificados, excluyendo los eliminados (para no intentar copiar archivos que ya no existen). `--pretty=format:` elimina el encabezado de cada commit dejando solo los nombres de archivos.
+
+---
+
+## 3. Flujo de trabajo con ramas
+
+### Buenas prácticas antes de crear una rama
+```bash
+# Paso 1: Actualizar las ramas base para partir de código actualizado
+git checkout <rama-base> && git pull
+git checkout development && git pull
+
+# Paso 2: Crear tu rama de trabajo desde la base actualizada
+git checkout -b <mi-rama>
+```
+**¿Por qué es importante?** Si creas tu rama desde un estado desactualizado, acumularás conflictos que tendrás que resolver más adelante. Siempre hacer `pull` antes de ramificar garantiza que partes del código más reciente del equipo.
+
+---
+
+### Actualizar rama local cuando hay cambios remotos pendientes
+```bash
+git pull --rebase --autostash
+git push
+```
+**¿Qué hace?** Cuando alguien más subió cambios a tu misma rama y Git te impide hacer push, este comando resuelve el problema de forma segura. `--rebase` reorganiza tus commits locales encima de los remotos (en lugar de crear un merge commit innecesario). `--autostash` guarda automáticamente cualquier trabajo no commiteado, aplica el rebase y lo restaura al final.
+
+---
+
+### Forzar un push de forma segura
+```bash
+git push --force-with-lease
+```
+**¿Qué hace?** A veces necesitas reescribir el historial de tu rama (por ejemplo, después de un rebase) y el push normal es rechazado. `--force-with-lease` fuerza el push pero con una verificación de seguridad: solo lo permite si nadie más subió cambios a esa rama desde tu último `pull`. Si alguien subió algo, el comando falla y te avisa, protegiendo el trabajo de tus compañeros. Es la alternativa segura a `--force`.
+
+---
+
+## 4. AWS S3 — Despliegue y sincronización
+
+### Ver buckets disponibles
+```bash
+aws s3 ls
+```
+**¿Qué hace?** Lista todos los buckets S3 a los que tiene acceso el perfil AWS configurado en tu máquina. Es el punto de partida para saber con qué entornos puedes trabajar.
+
+---
+
+### Listar contenido de un bucket
+```bash
+aws s3 ls <bucket>
+```
+**¿Qué hace?** Muestra los archivos y carpetas dentro del bucket especificado, similar al comando `ls` en terminal. Útil para verificar el estado actual del bucket antes de sincronizar.
+
+---
+
+### Simular una sincronización (dry run — sin cambios reales)
+```bash
+aws s3 sync "<carpeta-local>" <bucket> --dryrun
+```
+**¿Qué hace?** Ejecuta toda la lógica de sincronización pero sin aplicar ningún cambio real. Muestra en pantalla exactamente qué archivos se subirían, actualizarían o eliminarían. **Siempre ejecuta esto primero** antes de una sincronización real para evitar subidas accidentales.
+
+---
+
+### Sincronizar carpeta local hacia S3
+```bash
+aws s3 sync "<carpeta-local>" <bucket> --exact-timestamps
+```
+**¿Qué hace?** Compara los archivos locales con los del bucket y sube únicamente los que son nuevos o fueron modificados. El flag `--exact-timestamps` usa la fecha de modificación exacta para determinar si un archivo cambió, lo que es más preciso que comparar solo por tamaño. Los archivos que ya existen y son idénticos no se transfieren.
+
+---
+
+### Sincronizar eliminando archivos sobrantes en S3
+```bash
+aws s3 sync "<carpeta-local>" <bucket> --delete --exact-timestamps
+```
+**¿Qué hace?** Igual que la sincronización normal, pero además elimina del bucket cualquier archivo que no exista en tu carpeta local. Deja el bucket como un espejo exacto de tu carpeta.
+
+> ⚠️ **Precaución:** Si tienes archivos en S3 que no están en tu carpeta local (como backups o archivos generados por otros procesos), este comando los eliminará permanentemente. Usa `--dryrun` antes para revisar qué se borrará.
+
+---
+
+### Subir un archivo puntual
+```bash
+aws s3 cp <archivo> <bucket>/<archivo>
+```
+**¿Qué hace?** Copia un único archivo desde tu máquina hacia una ruta específica dentro del bucket. A diferencia de `sync`, no compara ni verifica nada, simplemente sube ese archivo. Útil para actualizaciones urgentes de un solo archivo como un `index.html` o un `manifest.json`.
+
+---
+
+### Descargar contenido de un bucket a local
+```bash
+aws s3 sync <bucket> <carpeta-local>
+```
+**¿Qué hace?** Invierte la dirección de la sincronización: descarga los archivos del bucket hacia tu máquina. Útil para hacer backups locales o para restaurar archivos que solo existen en S3.
+
+---
+
+### Eliminar un archivo del bucket
+```bash
+aws s3 rm <bucket>/<archivo>
+```
+**¿Qué hace?** Elimina permanentemente un archivo específico del bucket. No hay confirmación ni papelera de reciclaje, por lo que debes estar seguro de la ruta antes de ejecutarlo.
+
+---
+
+### Eliminar una carpeta completa del bucket
+```bash
+aws s3 rm <bucket>/<carpeta> --recursive
+```
+**¿Qué hace?** Elimina una carpeta y todo su contenido dentro del bucket. El flag `--recursive` es obligatorio para operar sobre directorios; sin él, el comando no tendrá efecto. Úsalo con precaución.
+
+---
+
+### Validar identidad AWS activa
+```bash
+aws sts get-caller-identity
+```
+**¿Qué hace?** Consulta al servicio de AWS cuál es la identidad que está usando tu terminal en este momento. Devuelve el ID de cuenta, el nombre de usuario o rol, y el ARN completo. Es el primer comando a ejecutar si tienes dudas sobre con qué cuenta o entorno (dev, staging, producción) estás trabajando.
