@@ -6,16 +6,19 @@
 
 ## Convenciones usadas en esta guía
 
-| Placeholder | Descripción |
-|---|---|
-| `<destino>` | Ruta absoluta o relativa donde se copiarán los archivos |
-| `<rama-base>` | Rama de referencia (ej: `main`, `master`, `development`) |
-| `<mi-rama>` | Tu rama de trabajo (ej: `fix/TICKET-123`) |
-| `<release>` | Rama de release (ej: `release/v1.0.0`) |
-| `<commit-hash>` | Hash SHA del commit específico |
-| `<N>` | Número entero (cantidad de commits, horas, días, etc.) |
-| `<bucket>` | Nombre del bucket S3 (ej: `s3://mi-bucket`) |
-| `<archivo>` | Ruta del archivo a operar |
+Antes de copiar cualquier comando, reemplaza los siguientes placeholders con tus valores reales:
+
+| Placeholder | Descripción | Ejemplo |
+|---|---|---|
+| `<destino>` | Ruta donde se copiarán los archivos | `/home/usuario/proyecto/dist` |
+| `<rama-base>` | Rama principal de referencia | `main`, `master`, `development` |
+| `<mi-rama>` | Tu rama de trabajo actual | `fix/TICKET-123` |
+| `<release>` | Rama de release o versión | `release/v1.0.0` |
+| `<commit-hash>` | Identificador único de un commit | `63ccc97` |
+| `<N>` | Número entero positivo | `3`, `6`, `24` |
+| `<bucket>` | URI del bucket S3 | `s3://mi-proyecto` |
+| `<archivo>` | Ruta relativa al archivo | `src/components/Header.js` |
+| `<carpeta-local>` | Ruta local de tu proyecto compilado | `./dist`, `./public` |
 
 ---
 
@@ -25,7 +28,7 @@
 ```bash
 git diff
 ```
-Muestra las diferencias de todos los archivos modificados que aún no han sido commiteados.
+**¿Qué hace?** Compara el estado actual de tus archivos contra el último commit registrado. Te muestra línea por línea qué fue agregado (en verde con `+`) y qué fue eliminado (en rojo con `-`). Es el primer comando que debes ejecutar cuando quieres revisar qué has cambiado antes de hacer un commit.
 
 ---
 
@@ -33,7 +36,7 @@ Muestra las diferencias de todos los archivos modificados que aún no han sido c
 ```bash
 git diff --name-only HEAD~1 HEAD
 ```
-Lista únicamente los nombres de los archivos que cambiaron en el commit más reciente.
+**¿Qué hace?** Muestra solo los nombres de los archivos que cambiaron en el commit más reciente, sin mostrar el contenido de los cambios. `HEAD` apunta al commit actual y `HEAD~1` es el commit inmediatamente anterior. Útil cuando necesitas saber rápidamente qué archivos tocó el último commit.
 
 ---
 
@@ -41,7 +44,7 @@ Lista únicamente los nombres de los archivos que cambiaron en el commit más re
 ```bash
 git diff --name-only <rama-base>..<release>
 ```
-Muestra qué archivos difieren entre dos ramas cualesquiera.
+**¿Qué hace?** Compara dos ramas y lista los archivos que son diferentes entre ellas. Los dos puntos `..` le indican a Git que compare el estado final de ambas ramas. Útil para saber qué cambios tiene una rama de release respecto a la rama base antes de hacer un merge o despliegue.
 
 ---
 
@@ -49,7 +52,7 @@ Muestra qué archivos difieren entre dos ramas cualesquiera.
 ```bash
 git diff <rama-base>...<mi-rama> --name-only
 ```
-Lista todos los archivos que difieren entre `<rama-base>` y `<mi-rama>`.
+**¿Qué hace?** Lista todos los archivos que modificaste en tu rama respecto a la rama base. Los tres puntos `...` le indican a Git que busque el punto en común entre ambas ramas y compare desde ahí, ignorando cambios que ya existían en la base. Ideal para revisar exactamente qué archivos son parte de tu trabajo antes de abrir un Pull Request.
 
 ---
 
@@ -57,8 +60,10 @@ Lista todos los archivos que difieren entre `<rama-base>` y `<mi-rama>`.
 ```bash
 git diff --name-only HEAD~<N>..HEAD
 ```
-Ejemplo para los últimos 6 commits:
+**¿Qué hace?** Acumula todos los archivos que cambiaron en los últimos `<N>` commits y los lista. `HEAD~<N>` retrocede `N` posiciones desde el commit actual. Por ejemplo, `HEAD~6` significa "6 commits atrás".
+
 ```bash
+# Ejemplo: ver archivos de los últimos 6 commits
 git diff --name-only HEAD~6..HEAD
 ```
 
@@ -68,7 +73,7 @@ git diff --name-only HEAD~6..HEAD
 ```bash
 git diff --name-only $(git rev-list -n 1 --before="1 days ago" <release>)..<release>
 ```
-Muestra los archivos que cambiaron durante las últimas 24 horas en la rama `<release>`.
+**¿Qué hace?** Primero ejecuta el comando interno `git rev-list -n 1 --before="1 days ago"` para encontrar cuál era el último commit de la rama hace exactamente 24 horas, y luego compara ese punto contra el estado actual de la rama. El resultado es la lista de archivos que cambiaron durante ese período. Muy útil para revisar qué se subió a producción en el día.
 
 ---
 
@@ -76,14 +81,14 @@ Muestra los archivos que cambiaron durante las últimas 24 horas en la rama `<re
 ```bash
 git log --follow -- <archivo>
 ```
-Muestra todos los commits que afectaron a `<archivo>`, incluso si fue renombrado o movido de directorio en algún punto del historial. Sin `--follow`, Git detiene el historial en el punto donde se renombró.
+**¿Qué hace?** Muestra todos los commits de la historia del repositorio que tocaron ese archivo específico. El flag `--follow` es clave: hace que Git rastree el archivo incluso si fue renombrado o movido de carpeta en algún momento del pasado. Sin `--follow`, el historial se corta en el punto donde el archivo cambió de nombre. Los dos guiones `--` le indican a Git que lo que sigue es una ruta de archivo, no una rama.
 
 **Variantes útiles:**
 ```bash
-# Mostrar también el diff de cada commit que tocó el archivo
+# Ver los cambios exactos (diff) de cada commit que tocó el archivo
 git log --follow -p -- <archivo>
 
-# Formato compacto: hash corto + mensaje
+# Ver el historial en formato compacto: hash corto + mensaje del commit
 git log --follow --oneline -- <archivo>
 ```
 
@@ -93,13 +98,15 @@ git log --follow --oneline -- <archivo>
 ```bash
 git diff <commit-hash>^ <commit-hash> --name-only
 ```
-Útil para inspeccionar exactamente qué cambió en un commit en particular.
+**¿Qué hace?** Muestra exactamente qué archivos se modificaron en ese commit en particular. El símbolo `^` al final del hash significa "el commit anterior a este". Es útil cuando alguien te pasa un hash específico y quieres saber qué tocó sin tener que revisar toda la historia.
 
 ---
 
 ## 2. Copia de archivos modificados
 
-> Todos los comandos de copia usan `rsync -R` para **preservar la estructura de directorios** del proyecto.
+> Todos los comandos de esta sección usan `rsync -R` que, a diferencia de un simple `cp`, **preserva la estructura de carpetas** del proyecto al copiar. Esto significa que si un archivo está en `src/components/Button.js`, llegará a destino como `<destino>/src/components/Button.js`.
+
+---
 
 ### Copiar archivos que difieren entre tu rama y la base
 ```bash
@@ -107,6 +114,7 @@ for name in $(git diff <rama-base>...<mi-rama> --name-only); do
   rsync -R "$name" "<destino>"
 done
 ```
+**¿Qué hace?** Obtiene la lista de archivos modificados entre tu rama y la base, y los copia uno a uno al destino manteniendo la estructura de carpetas. El bucle `for` itera sobre cada archivo de la lista y `rsync -R` lo copia respetando su ruta relativa.
 
 ---
 
@@ -116,6 +124,7 @@ for name in $(git diff --name-only HEAD~1..HEAD); do
   rsync -R "$name" "<destino>"
 done
 ```
+**¿Qué hace?** Toma exactamente los archivos que cambiaron en el último commit y los copia al destino. Útil para despliegues manuales donde solo necesitas enviar lo que cambió más recientemente.
 
 ---
 
@@ -125,6 +134,7 @@ for name in $(git diff --name-only HEAD~<N>..HEAD | sort -u); do
   rsync -R "$name" "<destino>"
 done
 ```
+**¿Qué hace?** Igual que el anterior pero acumulando `N` commits. El pipe hacia `sort -u` elimina duplicados: si un mismo archivo fue modificado en varios commits, solo se copiará una vez (su versión más reciente).
 
 ---
 
@@ -134,121 +144,4 @@ for name in $(git diff HEAD "@{<N>.hours.ago}" --name-only); do
   rsync -R "$name" "<destino>"
 done
 ```
-
----
-
-### Copiar archivos agregados o modificados desde medianoche
-```bash
-for name in $(git log --since="midnight" --pretty=format: --name-only --diff-filter=AM <rama-base>); do
-  rsync -R "$name" "<destino>"
-done
-```
-El flag `--diff-filter=AM` filtra solo archivos **A**gregados y **M**odificados, excluyendo eliminados.
-
----
-
-## 3. Flujo de trabajo con ramas
-
-### Buenas prácticas antes de crear una rama
-
-```bash
-# 1. Actualizar las ramas base
-git checkout <rama-base> && git pull
-git checkout development && git pull
-
-# 2. Crear tu rama de trabajo
-git checkout -b <mi-rama>
-```
-
----
-
-### Actualizar rama local cuando hay cambios remotos pendientes
-```bash
-git pull --rebase --autostash
-git push
-```
-Aplica los cambios remotos primero y luego tus commits locales encima, sin perder trabajo sin confirmar.
-
----
-
-### Forzar un push de forma segura
-```bash
-git push --force-with-lease
-```
-Fuerza el push solo si nadie más ha subido cambios desde tu último `pull`. Más seguro que `--force`.
-
----
-
-## 4. AWS S3 — Despliegue y sincronización
-
-### Ver buckets disponibles
-```bash
-aws s3 ls
-```
-
----
-
-### Listar contenido de un bucket
-```bash
-aws s3 ls <bucket>
-```
-
----
-
-### Simular una sincronización (dry run — sin cambios reales)
-```bash
-aws s3 sync "<carpeta-local>" <bucket> --dryrun
-```
-Muestra qué archivos se subirían o actualizarían, sin ejecutar ningún cambio.
-
----
-
-### Sincronizar carpeta local hacia S3
-```bash
-aws s3 sync "<carpeta-local>" <bucket> --exact-timestamps
-```
-Sube y actualiza archivos comparando timestamps exactos.
-
----
-
-### Sincronizar eliminando archivos sobrantes en S3
-```bash
-aws s3 sync "<carpeta-local>" <bucket> --delete --exact-timestamps
-```
-> ⚠️ **Precaución:** deja el bucket idéntico a la carpeta local, **eliminando** archivos remotos que no existan localmente.
-
----
-
-### Subir un archivo puntual
-```bash
-aws s3 cp <archivo> <bucket>/<archivo>
-```
-
----
-
-### Descargar contenido de un bucket a local
-```bash
-aws s3 sync <bucket> <carpeta-local>
-```
-
----
-
-### Eliminar un archivo del bucket
-```bash
-aws s3 rm <bucket>/<archivo>
-```
-
----
-
-### Eliminar una carpeta completa del bucket
-```bash
-aws s3 rm <bucket>/<carpeta> --recursive
-```
-
----
-
-### Validar identidad AWS activa
-```bash
-aws sts get-caller-identity
-```
-Verifica la cuenta, el usuario y el ARN configurados en el perfil AWS activo.
+**¿Qué hace?** En lugar de contar por commits, f
